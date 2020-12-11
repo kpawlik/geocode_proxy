@@ -1,0 +1,4 @@
+*.exe
+*.json
+*.zip
+pkg/geocoder/addresses.go
