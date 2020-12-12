@@ -7,6 +7,11 @@ import (
 
 	"github.com/kpawlik/geocode_server/pkg/config"
 	"github.com/kpawlik/geocode_server/pkg/geocoder"
+	"github.com/sirupsen/logrus"
+)
+
+var (
+	logger = logrus.New()
 )
 
 type geocodeAddressRequest struct {
@@ -67,7 +72,7 @@ func geocode(rw http.ResponseWriter, request *http.Request, cfg config.Config) (
 			Address: req.Address}
 		gRequests[i] = gRequest
 	}
-	if gResponses, err = geocoder.Geocode(gRequests, cfg); err != nil {
+	if gResponses, err = geocoder.Geocode(gRequests, cfg, logger); err != nil {
 		resp.Error = fmt.Sprintf("Error geocoding , %v", err)
 		return
 	}
@@ -89,8 +94,28 @@ func geocode(rw http.ResponseWriter, request *http.Request, cfg config.Config) (
 	return
 }
 
+func setLogLevel(cfg config.Config) {
+	switch cfg.LogLevel {
+
+	case "warn":
+		logger.SetLevel(logrus.WarnLevel)
+		break
+	case "error":
+		logger.SetLevel(logrus.ErrorLevel)
+		break
+	default:
+		logger.SetLevel(logrus.InfoLevel)
+		break
+	}
+	logger.SetFormatter(&logrus.TextFormatter{
+		DisableColors: true,
+		FullTimestamp: false,
+	})
+}
+
 // Serve serve http server
 func Serve(cfg config.Config) (err error) {
+	setLogLevel(cfg)
 	http.HandleFunc("/geocode", newGeocodeHandler(cfg))
 	err = http.ListenAndServe(fmt.Sprintf(":%d", cfg.Port), nil)
 	return
