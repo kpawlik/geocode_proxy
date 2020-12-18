@@ -10,10 +10,6 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-var (
-	logger = logrus.New()
-)
-
 type geocodeAddressRequest struct {
 	ID      string `json:"id"`
 	Address string `json:"address"`
@@ -36,14 +32,14 @@ type geocodeResponse struct {
 	Error     string                   `json:"error"`
 }
 
-func newGeocodeHandler(cfg config.Config) http.HandlerFunc {
+func newGeocodeHandler(cfg config.Config, logger *logrus.Logger) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var (
 			bytes []byte
 			err   error
 		)
 		w.Header().Add("Content-Type", "application/json")
-		resp := geocode(w, r, cfg)
+		resp := geocode(w, r, cfg, logger)
 		if bytes, err = json.Marshal(resp); err != nil {
 			bytes = []byte(fmt.Sprintf("Error encoding response, %v", err))
 		}
@@ -51,7 +47,7 @@ func newGeocodeHandler(cfg config.Config) http.HandlerFunc {
 	})
 }
 
-func geocode(rw http.ResponseWriter, request *http.Request, cfg config.Config) (resp geocodeResponse) {
+func geocode(rw http.ResponseWriter, request *http.Request, cfg config.Config, logger *logrus.Logger) (resp geocodeResponse) {
 	var (
 		err        error
 		gRequests  []geocoder.Request
@@ -62,6 +58,7 @@ func geocode(rw http.ResponseWriter, request *http.Request, cfg config.Config) (
 
 	gr := geocodeRequest{}
 	if err = decoder.Decode(&gr); err != nil {
+		logger.Error(err)
 		resp.Error = fmt.Sprintf("Error decoding request body, %v", err)
 		return
 	}
@@ -73,6 +70,7 @@ func geocode(rw http.ResponseWriter, request *http.Request, cfg config.Config) (
 		gRequests[i] = gRequest
 	}
 	if gResponses, err = geocoder.Geocode(gRequests, cfg, logger); err != nil {
+		logger.Error(err)
 		resp.Error = fmt.Sprintf("Error geocoding , %v", err)
 		return
 	}
@@ -94,29 +92,10 @@ func geocode(rw http.ResponseWriter, request *http.Request, cfg config.Config) (
 	return
 }
 
-func setLogLevel(cfg config.Config) {
-	switch cfg.LogLevel {
-
-	case "warn":
-		logger.SetLevel(logrus.WarnLevel)
-		break
-	case "error":
-		logger.SetLevel(logrus.ErrorLevel)
-		break
-	default:
-		logger.SetLevel(logrus.InfoLevel)
-		break
-	}
-	logger.SetFormatter(&logrus.TextFormatter{
-		DisableColors: true,
-		FullTimestamp: false,
-	})
-}
-
 // Serve serve http server
-func Serve(cfg config.Config) (err error) {
-	setLogLevel(cfg)
-	http.HandleFunc("/geocode", newGeocodeHandler(cfg))
+func Serve(cfg config.Config, logger *logrus.Logger) (err error) {
+
+	http.HandleFunc("/geocode", newGeocodeHandler(cfg, logger))
 	err = http.ListenAndServe(fmt.Sprintf(":%d", cfg.Port), nil)
 	return
 

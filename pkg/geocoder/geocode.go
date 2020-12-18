@@ -32,71 +32,92 @@ func newResponse(req Request) Response {
 	return Response{0.0, 0.0, nil, req}
 }
 
-func worker(reqChan chan Request, respChan chan Response, gc *maps.Client, logger *logrus.Logger) {
+func worker(reqChan chan Request, respChan chan Response, closeChan chan bool, gc *maps.Client, logger *logrus.Logger) {
+	logger.Debugf("Creating worker")
 	for {
-		req := <-reqChan
-		resp := newResponse(req)
-		// fmt.Println("Address from ca: ", address)
+		select {
+		case req := <-reqChan:
 
-		gReq := &maps.GeocodingRequest{
-			Address: req.Address,
-		}
-		gResp, err := gc.Geocode(context.Background(), gReq)
-		if err != nil {
-			resp.Error = fmt.Errorf("Error geocoding address '%s' (%s). %v", req.Address, req.ID, err)
+			resp := newResponse(req)
+			logger.Debugf("Request from request channel: %s", req)
+			gReq := &maps.GeocodingRequest{
+				Address: req.Address,
+			}
+			gResp, err := gc.Geocode(context.Background(), gReq)
+			if err != nil {
+				resp.Error = fmt.Errorf("%v. Error geocoding address '%s' (%s)", err, req.Address, req.ID)
+				respChan <- resp
+				continue
+			}
+			if len(gResp) == 0 {
+				resp.Error = fmt.Errorf("Address '%s' (%s) could not be geocoded", req.Address, req.ID)
+				respChan <- resp
+				continue
+			}
+			resp.Lat = gResp[0].Geometry.Location.Lat
+			resp.Lng = gResp[0].Geometry.Location.Lng
+			logger.Infof("Address '%s' (%s) geocoded {%f, %f}", resp.Address, resp.ID, resp.Lat, resp.Lng)
 			respChan <- resp
-			continue
-		}
-		if len(gResp) == 0 {
-			resp.Error = fmt.Errorf("Address '%s' (%s) could not be geocoded", req.Address, req.ID)
-			respChan <- resp
-			continue
-		}
-		resp.Lat = gResp[0].Geometry.Location.Lat
-		resp.Lng = gResp[0].Geometry.Location.Lng
+		case _, close := <-closeChan:
+			if !close {
+				logger.Debugf("Closing worker")
+				return
+			}
 
-		respChan <- resp
+		}
 	}
+}
+
+func newClient(cfg config.Config) (client *maps.Client, err error) {
+	options := make([]maps.ClientOption, 0)
+	auth := cfg.Authentication
+	if len(auth.ClientID) > 0 && len(auth.ClientSecret) > 0 {
+		options = append(options, maps.WithClientIDAndSignature(auth.ClientID, auth.ClientSecret))
+	}
+	if len(auth.APIKey) > 0 {
+		options = append(options, maps.WithAPIKey(auth.APIKey))
+	}
+	if len(auth.ClientID) > 0 && len(auth.ClientSecret) > 0 {
+		options = append(options, maps.WithAPIKeyAndSignature(auth.APIKey, auth.ClientSecret))
+	}
+	if len(auth.Channel) > 0 {
+		options = append(options, maps.WithChannel(auth.Channel))
+	}
+	client, err = maps.NewClient(options...)
+	return
+
 }
 
 // Geocode addesses
 func Geocode(requests []Request, cfg config.Config, logger *logrus.Logger) (resposes []Response, err error) {
-
 	//options := maps.WithClientIDAndSignature(cfg.ClientID, cfg.ClientSecret)
 	var (
-		c *maps.Client
+		gc *maps.Client
 	)
-	c, err = maps.NewClient(maps.WithAPIKey(cfg.Authentication.APIKey))
-	if err != nil {
-		err = fmt.Errorf("Error creating Maps.Client, %v", err)
-		logger.Error(err)
-		return
-	}
-
+	total := len(requests)
 	cn := make(chan Response, 5)
-	ca := make(chan Request, len(requests))
-	cnt := 0
+	ca := make(chan Request, total)
+	cc := make(chan bool)
 	for i := 0; i < cfg.WorkersNumber; i++ {
-		go worker(ca, cn, c, logger)
+		if gc, err = newClient(cfg); err != nil {
+			err = fmt.Errorf("Error creating Maps.Client, %v", err)
+			return
+		}
+		go worker(ca, cn, cc, gc, logger)
 	}
 	for _, request := range requests {
-		if len(request.Address) == 0 {
-			continue
-		}
-		cnt++
 		ca <- request
 	}
 	fails := 0
-	for i := 0; i < cnt; i++ {
+	for i := 0; i < total; i++ {
 		res := <-cn
 		resposes = append(resposes, res)
 		if res.Error != nil {
-			logger.Error(res.Error)
 			fails++
-		} else {
-			logger.Infof("Address '%s' Id '%s' geocoded {%f, %f}", res.Address, res.ID, res.Lat, res.Lng)
+			logger.Error(res.Error)
 		}
 	}
-	logger.Infof("Success: %d, Fails: %d", cnt-fails, fails)
+	logger.Infof("Set of %d addresses processed. Success: %d, Fails: %d", total, total-fails, fails)
+	close(cc)
 	return
 }

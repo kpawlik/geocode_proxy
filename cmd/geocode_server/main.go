@@ -7,10 +7,12 @@ import (
 
 	"github.com/kpawlik/geocode_server/pkg/config"
 	"github.com/kpawlik/geocode_server/pkg/server"
+	"github.com/sirupsen/logrus"
 )
 
 var (
-	cfg config.Config
+	cfg    config.Config
+	logger = logrus.New()
 )
 
 func init() {
@@ -33,6 +35,28 @@ func init() {
 }
 
 func main() {
+	setLogger(cfg)
+	server.Serve(cfg, logger)
+}
 
-	server.Serve(cfg)
+func setLogger(cfg config.Config) {
+	switch cfg.LogLevel {
+	case "debug":
+		logger.SetLevel(logrus.DebugLevel)
+		break
+	case "warn":
+		logger.SetLevel(logrus.WarnLevel)
+		break
+	case "error":
+		logger.SetLevel(logrus.ErrorLevel)
+		break
+	default:
+		logger.SetLevel(logrus.InfoLevel)
+		break
+	}
+	logger.SetFormatter(&logrus.TextFormatter{
+		DisableColors: true,
+		FullTimestamp: false,
+	})
+	logger.SetOutput(os.Stdout)
 }
