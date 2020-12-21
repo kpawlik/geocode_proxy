@@ -2,3 +2,4 @@
 *.json
 *.zip
 pkg/geocoder/addresses.go
+cmd/geocode_server/geocode_server

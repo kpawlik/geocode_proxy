@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,8 +13,10 @@ import (
 	"googlemaps.github.io/maps"
 )
 
-const (
-	QuotaLimit = "QuotaLimit"
+var (
+
+	// ErrQuotaLimit internal query limit
+	ErrQuotaLimit = errors.New("SERVER_QUERY_LIMIT")
 )
 
 type geocodeAddressRequest struct {
@@ -71,22 +74,38 @@ func prepareRequests(data io.Reader) (requests []geocoder.Request, err error) {
 
 func geocode(rw http.ResponseWriter, request *http.Request, cfg *config.Config, c *maps.Client) (resp geocodeResponse) {
 	var (
-		err       error
-		gRequests []geocoder.Request
+		err               error
+		gRequests         []geocoder.Request
+		noOfRequests      int
+		geocodedAddresses []geocodeAddressResponse
 	)
+	// Check internal quota limit
 	if !cfg.CheckQuotaLimit() {
 		log.Info("Quota limit exceeded")
-		resp.Error = QuotaLimit
+		resp.Error = ErrQuotaLimit.Error()
 		return
 	}
-	geocodedAddresses := []geocodeAddressResponse{}
+	// Run geocoding
+
 	if gRequests, err = prepareRequests(request.Body); err != nil {
 		log.Error(err)
 		resp.Error = fmt.Sprintf("Error decoding request body, %v", err)
 		return
 	}
-	noOfRequests := len(gRequests)
-
+	if noOfRequests = len(gRequests); noOfRequests == 0 {
+		log.Info("No requests to geocode")
+		return
+	}
+	// Check first address to make sure that we didn't exceeded Google Query Limit
+	first := gRequests[0]
+	gRequests = gRequests[1:]
+	cfg.IncQuota()
+	geocodedAddresses, err = checkFirstAddress(c, first)
+	if err != nil {
+		resp.Error = err.Error()
+		return
+	}
+	// if ok process rest
 	reqCh, respCh, closeCh := geocoder.StartWorkers(c, cfg.WorkersNumber, noOfRequests)
 	_, _, _ = reqCh, respCh, closeCh
 	noOfResponses := 0
@@ -99,20 +118,14 @@ func geocode(rw http.ResponseWriter, request *http.Request, cfg *config.Config, 
 			a := geocodeAddressResponse{
 				ID:      request.ID,
 				Address: request.Address,
-				Error:   QuotaLimit,
+				Error:   ErrQuotaLimit.Error(),
 			}
 			geocodedAddresses = append(geocodedAddresses, a)
 		}
 	}
-	// if gResponses, err = geocoder.Geocode(gRequests, cfg, logger); err != nil {
-	// 	logger.Error(err)
-	// 	resp.Error = fmt.Sprintf("Error geocoding , %v", err)
-	// 	return
-	// }
-
+	// collect results
 	for i := 0; i < noOfResponses; i++ {
 		res := <-respCh
-
 		a := geocodeAddressResponse{
 			ID:      res.ID,
 			Address: res.Address,
@@ -124,9 +137,10 @@ func geocode(rw http.ResponseWriter, request *http.Request, cfg *config.Config, 
 		}
 		geocodedAddresses = append(geocodedAddresses, a)
 	}
+	// send signal to close all workers
 	close(closeCh)
-
 	resp.Addresses = geocodedAddresses
+	log.Infof("Remaining quota: %d", cfg.GetRemainingQuota())
 	return
 }
 
@@ -138,8 +152,30 @@ func Serve(cfg *config.Config) (err error) {
 	if c, err = geocoder.NewClient(cfg); err != nil {
 		return
 	}
+	config.StartQuotaTimer(cfg)
 	http.HandleFunc("/geocode", newGeocodeHandler(cfg, c))
 	err = http.ListenAndServe(fmt.Sprintf(":%d", cfg.Port), nil)
 	return
 
+}
+
+func checkFirstAddress(c *maps.Client, request geocoder.Request) (responses []geocodeAddressResponse, err error) {
+	responses = []geocodeAddressResponse{}
+	response := geocoder.Geocode(c, request)
+	if response.Error != nil && errors.Is(response.Error, geocoder.ErrGoogleLimit) {
+		err = geocoder.ErrGoogleLimit
+		return
+	}
+	a := geocodeAddressResponse{
+		ID:      response.ID,
+		Address: response.Address,
+		Lat:     response.Lat,
+		Lng:     response.Lng,
+	}
+	if response.Error != nil {
+		a.Error = response.Error.Error()
+	}
+	responses = append(responses, a)
+
+	return
 }

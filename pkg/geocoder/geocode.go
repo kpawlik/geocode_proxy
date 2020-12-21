@@ -2,7 +2,8 @@ package geocoder
 
 import (
 	"context"
-	"fmt"
+	"errors"
+	"strings"
 
 	"github.com/kpawlik/geocode_server/pkg/config"
 	log "github.com/sirupsen/logrus"
@@ -11,7 +12,14 @@ import (
 )
 
 const (
-	workersCount = 20
+	queryLimitPrefix = "maps: OVER_QUERY_LIMIT"
+)
+
+var (
+	// ErrUnableToGeocode address cannot be geocoded
+	ErrUnableToGeocode = errors.New("UNABLE_TO_GEOCODE")
+	// ErrGoogleLimit limit query from Google API
+	ErrGoogleLimit = errors.New("GOOGLE_OVER_QUERY_LIMIT")
 )
 
 // Request to geocoder
@@ -32,39 +40,48 @@ func newResponse(req Request) Response {
 	return Response{0.0, 0.0, nil, req}
 }
 
+//Geocode address
+func Geocode(c *maps.Client, req Request) (resp Response) {
+	var (
+		gResp []maps.GeocodingResult
+		err   error
+	)
+	resp = newResponse(req)
+	log.Debugf("Request from request channel: %s", req)
+	gReq := &maps.GeocodingRequest{
+		Address: req.Address,
+	}
+	gResp, err = c.Geocode(context.Background(), gReq)
+	if err != nil {
+		log.Errorf("Error geocoding address '%s' (%s). %v", req.Address, req.ID, err)
+		if IsGoogleOverQueryLimit(err) {
+			resp.Error = ErrGoogleLimit
+		}
+		return
+	}
+	if len(gResp) == 0 {
+		log.Errorf("Address '%s' (%s) could not be geocoded", req.Address, req.ID)
+		resp.Error = ErrUnableToGeocode
+		return
+	}
+	resp.Lat = gResp[0].Geometry.Location.Lat
+	resp.Lng = gResp[0].Geometry.Location.Lng
+	log.Debug("Address '%s' (%s) geocoded {%f, %f}", resp.Address, resp.ID, resp.Lat, resp.Lng)
+	return
+}
+
 func worker(reqChan chan Request, respChan chan Response, closeChan chan bool, gc *maps.Client) {
 	log.Debugf("Creating worker")
 	for {
 		select {
 		case req := <-reqChan:
-
-			resp := newResponse(req)
-			log.Debugf("Request from request channel: %s", req)
-			gReq := &maps.GeocodingRequest{
-				Address: req.Address,
-			}
-			gResp, err := gc.Geocode(context.Background(), gReq)
-			if err != nil {
-				resp.Error = fmt.Errorf("%v. Error geocoding address '%s' (%s)", err, req.Address, req.ID)
-				respChan <- resp
-				continue
-			}
-
-			if len(gResp) == 0 {
-				resp.Error = fmt.Errorf("Address '%s' (%s) could not be geocoded", req.Address, req.ID)
-				respChan <- resp
-				continue
-			}
-			resp.Lat = gResp[0].Geometry.Location.Lat
-			resp.Lng = gResp[0].Geometry.Location.Lng
-			log.Infof("Address '%s' (%s) geocoded {%f, %f}", resp.Address, resp.ID, resp.Lat, resp.Lng)
+			resp := Geocode(gc, req)
 			respChan <- resp
 		case _, close := <-closeChan:
 			if !close {
 				log.Debugf("Closing worker")
 				return
 			}
-
 		}
 	}
 }
@@ -105,6 +122,12 @@ func StartWorkers(c *maps.Client, n int, total int) (chan Request, chan Response
 		go worker(requests, responses, close, c)
 	}
 	return requests, responses, close
+}
+
+// IsGoogleOverQueryLimit check if this is google limit error
+func IsGoogleOverQueryLimit(err error) bool {
+
+	return err != nil && strings.HasPrefix(err.Error(), queryLimitPrefix)
 }
 
 // // Geocode addesses
