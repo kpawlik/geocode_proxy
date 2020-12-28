@@ -33,14 +33,15 @@ func init() {
 		os.Exit(1)
 	}
 }
-
 func main() {
 	setLogger(cfg)
-	server.Serve(cfg)
+	if err := server.Serve(cfg); err != nil {
+		log.Error(err)
+	}
 }
 
 func setLogger(cfg *config.Config) {
-	switch cfg.LogLevel {
+	switch cfg.Server.LogLevel {
 	case "debug":
 		log.SetLevel(log.DebugLevel)
 		break

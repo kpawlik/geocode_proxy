@@ -16,39 +16,43 @@ const (
 	defaultWorkersNumber      = 10
 	defaultQuota              = 0
 	defaultQuotaTimeInMinutes = 0
-	defaultTestAddress        = "Denver, CO, USA"
 )
 
-// Authentication part for google service
-type Authentication struct {
+// Geocoder part for google service
+type Geocoder struct {
 	APIKey       string `json:"apiKey"`
 	ClientID     string `json:"clientId"`
 	ClientSecret string `json:"clientSecret"`
 	Channel      string `json:"channel"`
 }
 
+// Server part of http configuration
+type Server struct {
+	Port     int    `json:"port"`
+	LogLevel string `json:"logLevel"`
+}
+
 // Config stores configuration
 type Config struct {
-	Authentication     Authentication `json:"authentication"`
-	WorkersNumber      int            `json:"workersNumber"`
-	Port               int            `json:"port"`
-	LogLevel           string         `json:"logLevel"`
-	Quota              int            `json:"quota"`
-	QuotaTimeInMinutes int            `json:"quotaTimeInMinutes"`
-	TestAddress        string         `json:"testAddress"`
+	Geocoder           Geocoder `json:"geocoder"`
+	Server             Server   `json:"server"`
+	WorkersNumber      int      `json:"workersNumber"`
+	Quota              int      `json:"quota"`
+	QuotaTimeInMinutes int      `json:"quotaTimeInMinutes"`
 	usedQuotaCount     int
 	useQuotaCheck      bool
 	mux                sync.RWMutex
 }
 
 func newConfig() *Config {
-	cfg := &Config{LogLevel: defaultLogLevel,
-		Port:               defaultPort,
-		WorkersNumber:      defaultWorkersNumber,
+	cfg := &Config{WorkersNumber: defaultWorkersNumber,
 		mux:                sync.RWMutex{},
 		Quota:              defaultQuota,
 		QuotaTimeInMinutes: defaultQuotaTimeInMinutes,
-		TestAddress:        defaultTestAddress,
+		Server: Server{
+			Port:     defaultPort,
+			LogLevel: defaultLogLevel,
+		},
 	}
 	return cfg
 }
@@ -82,8 +86,8 @@ func (c *Config) GetRemainingQuota() int {
 	return c.Quota - c.usedQuotaCount
 }
 
-// CheckQuotaLimit checks if used quota exceeded
-func (c *Config) CheckQuotaLimit() bool {
+// IsAviableQuota checks if used quota exceeded
+func (c *Config) IsAviableQuota() bool {
 	c.mux.RLock()
 	defer c.mux.RUnlock()
 	if !c.useQuotaCheck {

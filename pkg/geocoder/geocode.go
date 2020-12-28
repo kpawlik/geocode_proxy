@@ -36,6 +36,38 @@ type Response struct {
 	Request
 }
 
+func (r Response) IsGoogleOverQueryLimit() bool {
+	return IsGoogleOverQueryLimit(r.Error)
+
+}
+
+// Geocoder geocoder struct
+type Geocoder struct {
+	client *maps.Client
+	cfg    *config.Config
+	Err    error
+}
+
+// NewGeocoder returns a new Geocoder instance
+func NewGeocoder(cfg *config.Config) *Geocoder {
+	c, err := NewClient(cfg)
+	g := &Geocoder{cfg: cfg,
+		client: c,
+		Err:    err}
+	return g
+}
+
+// Geocode request
+func (g *Geocoder) Geocode(req Request) (resp Response) {
+	resp = Geocode(g.client, req)
+	return
+}
+
+//IncQuota increment used quota
+func (g *Geocoder) IncQuota() {
+	g.cfg.IncQuota()
+}
+
 func newResponse(req Request) Response {
 	return Response{0.0, 0.0, nil, req}
 }
@@ -56,6 +88,8 @@ func Geocode(c *maps.Client, req Request) (resp Response) {
 		log.Errorf("Error geocoding address '%s' (%s). %v", req.Address, req.ID, err)
 		if IsGoogleOverQueryLimit(err) {
 			resp.Error = ErrGoogleLimit
+		} else {
+			resp.Error = err
 		}
 		return
 	}
@@ -70,12 +104,12 @@ func Geocode(c *maps.Client, req Request) (resp Response) {
 	return
 }
 
-func worker(reqChan chan Request, respChan chan Response, closeChan chan bool, gc *maps.Client) {
+func worker(reqChan chan Request, respChan chan Response, closeChan chan bool, g *Geocoder) {
 	log.Debugf("Creating worker")
 	for {
 		select {
 		case req := <-reqChan:
-			resp := Geocode(gc, req)
+			resp := g.Geocode(req)
 			respChan <- resp
 		case _, close := <-closeChan:
 			if !close {
@@ -89,7 +123,7 @@ func worker(reqChan chan Request, respChan chan Response, closeChan chan bool, g
 // NewClient returns new Google API client
 func NewClient(cfg *config.Config) (client *maps.Client, err error) {
 	options := make([]maps.ClientOption, 0)
-	auth := cfg.Authentication
+	auth := cfg.Geocoder
 	if len(auth.ClientID) > 0 && len(auth.ClientSecret) > 0 {
 		options = append(options, maps.WithClientIDAndSignature(auth.ClientID, auth.ClientSecret))
 	}
@@ -116,7 +150,7 @@ func Channels(total int) (chan Request, chan Response, chan bool) {
 }
 
 // StartWorkers start geocoding workers
-func StartWorkers(c *maps.Client, n int, total int) (chan Request, chan Response, chan bool) {
+func StartWorkers(c *Geocoder, n int, total int) (chan Request, chan Response, chan bool) {
 	requests, responses, close := Channels(total)
 	for i := 0; i < n; i++ {
 		go worker(requests, responses, close, c)
@@ -129,37 +163,3 @@ func IsGoogleOverQueryLimit(err error) bool {
 
 	return err != nil && strings.HasPrefix(err.Error(), queryLimitPrefix)
 }
-
-// // Geocode addesses
-// func Geocode(requests []Request, cfg *config.Config) (resposes []Response, err error) {
-// 	//options := maps.WithClientIDAndSignature(cfg.ClientID, cfg.ClientSecret)
-// 	var (
-// 		gc *maps.Client
-// 	)
-// 	total := len(requests)
-// 	cn := make(chan Response, 5)
-// 	ca := make(chan Request, total)
-// 	cc := make(chan bool)
-// 	for i := 0; i < cfg.WorkersNumber; i++ {
-// 		if gc, err = NewClient(cfg); err != nil {
-// 			err = fmt.Errorf("Error creating Maps.Client, %v", err)
-// 			return
-// 		}
-// 		go worker(ca, cn, cc, gc)
-// 	}
-// 	for _, request := range requests {
-// 		ca <- request
-// 	}
-// 	fails := 0
-// 	for i := 0; i < total; i++ {
-// 		res := <-cn
-// 		resposes = append(resposes, res)
-// 		if res.Error != nil {
-// 			fails++
-// 			log.Error(res.Error)
-// 		}
-// 	}
-// 	log.Infof("Set of %d addresses processed. Success: %d, Fails: %d", total, total-fails, fails)
-// 	close(cc)
-// 	return
-// }
