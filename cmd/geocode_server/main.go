@@ -35,6 +35,8 @@ func init() {
 }
 func main() {
 	setLogger(cfg)
+	log.Debugf("Config: %+v", cfg)
+	log.Info("Sertver start")
 	if err := server.Serve(cfg); err != nil {
 		log.Error(err)
 	}

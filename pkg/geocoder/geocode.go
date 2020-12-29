@@ -20,6 +20,8 @@ var (
 	ErrUnableToGeocode = errors.New("UNABLE_TO_GEOCODE")
 	// ErrGoogleLimit limit query from Google API
 	ErrGoogleLimit = errors.New("GOOGLE_OVER_QUERY_LIMIT")
+	// ErrQuotaLimit internal query limit
+	ErrQuotaLimit = errors.New("SERVER_QUERY_LIMIT")
 )
 
 // Request to geocoder
@@ -36,6 +38,7 @@ type Response struct {
 	Request
 }
 
+//IsGoogleOverQueryLimit checks if this is google limit error
 func (r Response) IsGoogleOverQueryLimit() bool {
 	return IsGoogleOverQueryLimit(r.Error)
 
@@ -59,6 +62,12 @@ func NewGeocoder(cfg *config.Config) *Geocoder {
 
 // Geocode request
 func (g *Geocoder) Geocode(req Request) (resp Response) {
+	if !g.isAviableQuota() {
+		resp = newResponse(req)
+		resp.Error = ErrQuotaLimit
+		return
+	}
+	g.IncQuota()
 	resp = Geocode(g.client, req)
 	return
 }
@@ -66,6 +75,10 @@ func (g *Geocoder) Geocode(req Request) (resp Response) {
 //IncQuota increment used quota
 func (g *Geocoder) IncQuota() {
 	g.cfg.IncQuota()
+}
+
+func (g *Geocoder) isAviableQuota() bool {
+	return g.cfg.IsAviableQuota()
 }
 
 func newResponse(req Request) Response {
@@ -143,7 +156,7 @@ func NewClient(cfg *config.Config) (client *maps.Client, err error) {
 
 // Channels returns channels required to comunication
 func Channels(total int) (chan Request, chan Response, chan bool) {
-	responses := make(chan Response, 5)
+	responses := make(chan Response, total)
 	requests := make(chan Request, total)
 	close := make(chan bool)
 	return requests, responses, close
