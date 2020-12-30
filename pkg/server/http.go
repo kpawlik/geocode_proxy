@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/kpawlik/geocode_server/pkg/config"
 	"github.com/kpawlik/geocode_server/pkg/geocoder"
@@ -39,47 +40,52 @@ func newGeocodeHandler(cfg *config.Config, c *geocoder.Geocoder) http.HandlerFun
 			bytes []byte
 			err   error
 		)
+		ts := time.Now()
 		w.Header().Add("Content-Type", "application/json")
 		resp := geocode(w, r, cfg, c)
 		if bytes, err = json.Marshal(resp); err != nil {
 			bytes = []byte(fmt.Sprintf("Error encoding response, %v", err))
 		}
 		w.Write(bytes)
+		info := fmt.Sprintf("%d request processed time: %v.", len(resp.Addresses), time.Now().Sub(ts))
+		if cfg.Quota > 0 {
+			info = fmt.Sprintf("%s Reminin quota: %d", info, cfg.GetRemainingQuota())
+		}
+		log.Info(info)
 	})
 }
 
 func prepareRequests(data io.Reader) (requests []geocoder.Request, err error) {
 	decoder := json.NewDecoder(data)
-	gr := request{}
-	if err = decoder.Decode(&gr); err != nil {
+	r := request{}
+	if err = decoder.Decode(&r); err != nil {
 		return
 	}
-	requests = make([]geocoder.Request, len(gr.Addresses))
-	for i, req := range gr.Addresses {
-		gRequest := geocoder.Request{ID: req.ID,
-			Address: req.Address}
-		requests[i] = gRequest
+	requests = make([]geocoder.Request, len(r.Addresses))
+	for i, address := range r.Addresses {
+		req := geocoder.Request{ID: address.ID,
+			Address: address.Address}
+		requests[i] = req
 	}
 	return
-
 }
 
 func geocode(rw http.ResponseWriter, request *http.Request, cfg *config.Config, c *geocoder.Geocoder) (resp response) {
 	var (
-		err               error
-		requests          []geocoder.Request
-		noOfRequests      int
-		geocodedAddresses []geocodedAddress
+		err          error
+		requests     []geocoder.Request
+		noOfRequests int
+		addresses    []geocodedAddress
 	)
 	if requests, err = prepareRequests(request.Body); err != nil {
 		log.Error(err)
 		resp.Error = fmt.Sprintf("Error decoding request body, %v", err)
 		return
 	}
+	// no of responses to collect from channel
 	noOfRequests = len(requests)
 	reqCh, respCh, closeCh := geocoder.StartWorkers(c, cfg.WorkersNumber, noOfRequests)
-	// no of responses to collect from channel
-
+	// send requests to chanels -> workers
 	for _, request := range requests {
 		reqCh <- request
 	}
@@ -92,16 +98,13 @@ func geocode(rw http.ResponseWriter, request *http.Request, cfg *config.Config, 
 			Address: res.Address,
 			Lat:     res.Lat,
 			Lng:     res.Lng,
+			Error:   res.Error,
 		}
-		if res.Error != nil {
-			a.Error = res.Error.Error()
-		}
-		geocodedAddresses = append(geocodedAddresses, a)
+		addresses = append(addresses, a)
 	}
-	// send signal to close all workers
+	// close all pending workers
 	close(closeCh)
-	resp.Addresses = geocodedAddresses
-	log.Infof("Remaining quota: %d", cfg.GetRemainingQuota())
+	resp.Addresses = addresses
 	return
 }
 

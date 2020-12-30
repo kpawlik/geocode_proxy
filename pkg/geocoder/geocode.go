@@ -34,14 +34,12 @@ type Request struct {
 type Response struct {
 	Lat   float64
 	Lng   float64
-	Error error
+	Error string
 	Request
 }
 
-//IsGoogleOverQueryLimit checks if this is google limit error
-func (r Response) IsGoogleOverQueryLimit() bool {
-	return IsGoogleOverQueryLimit(r.Error)
-
+func newResponse(req Request) Response {
+	return Response{Lat: 0.0, Lng: 0.0, Error: "", Request: req}
 }
 
 // Geocoder geocoder struct
@@ -64,7 +62,7 @@ func NewGeocoder(cfg *config.Config) *Geocoder {
 func (g *Geocoder) Geocode(req Request) (resp Response) {
 	if !g.isAviableQuota() {
 		resp = newResponse(req)
-		resp.Error = ErrQuotaLimit
+		resp.Error = ErrQuotaLimit.Error()
 		return
 	}
 	g.IncQuota()
@@ -79,10 +77,6 @@ func (g *Geocoder) IncQuota() {
 
 func (g *Geocoder) isAviableQuota() bool {
 	return g.cfg.IsAviableQuota()
-}
-
-func newResponse(req Request) Response {
-	return Response{0.0, 0.0, nil, req}
 }
 
 //Geocode address
@@ -100,15 +94,15 @@ func Geocode(c *maps.Client, req Request) (resp Response) {
 	if err != nil {
 		log.Errorf("Error geocoding address '%s' (%s). %v", req.Address, req.ID, err)
 		if IsGoogleOverQueryLimit(err) {
-			resp.Error = ErrGoogleLimit
+			resp.Error = ErrGoogleLimit.Error()
 		} else {
-			resp.Error = err
+			resp.Error = err.Error()
 		}
 		return
 	}
 	if len(gResp) == 0 {
 		log.Errorf("Address '%s' (%s) could not be geocoded", req.Address, req.ID)
-		resp.Error = ErrUnableToGeocode
+		resp.Error = ErrUnableToGeocode.Error()
 		return
 	}
 	resp.Lat = gResp[0].Geometry.Location.Lat
@@ -173,6 +167,5 @@ func StartWorkers(c *Geocoder, n int, total int) (chan Request, chan Response, c
 
 // IsGoogleOverQueryLimit check if this is google limit error
 func IsGoogleOverQueryLimit(err error) bool {
-
 	return err != nil && strings.HasPrefix(err.Error(), queryLimitPrefix)
 }
