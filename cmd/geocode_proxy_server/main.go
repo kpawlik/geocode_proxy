@@ -4,10 +4,12 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/kpawlik/geocode_server/pkg/config"
 	"github.com/kpawlik/geocode_server/pkg/server"
 	log "github.com/sirupsen/logrus"
+	lumberjack "gopkg.in/natefinch/lumberjack.v2"
 )
 
 const version = "0.1.202012301447"
@@ -40,17 +42,30 @@ func setLogger(cfg *config.Config) {
 	var (
 		logLevel log.Level
 	)
-	if level, ok := logLevelMap[cfg.Server.LogLevel]; ok {
+	if level, ok := logLevelMap[cfg.Log.LogLevel]; ok {
 		logLevel = level
 	} else {
 		logLevel = defaultLogLevel
 	}
 	log.SetLevel(logLevel)
-	log.SetFormatter(&log.TextFormatter{
-		DisableColors: false,
-		FullTimestamp: false,
-	})
-	log.SetOutput(os.Stdout)
+	if cfg.Log.Format == "json" {
+		log.SetFormatter(&log.JSONFormatter{})
+	} else {
+		log.SetFormatter(&log.TextFormatter{
+			DisableColors: false,
+			FullTimestamp: false,
+		})
+	}
+	if cfg.Log.Stdout {
+		log.SetOutput(os.Stdout)
+	} else {
+		log.SetOutput(&lumberjack.Logger{
+			Filename:   filepath.Join(cfg.Log.Directory, cfg.Log.Filename),
+			MaxSize:    10, // megabytes
+			MaxBackups: 10,
+		})
+	}
+
 }
 
 func main() {
