@@ -11,11 +11,11 @@ import (
 )
 
 const (
-	defaultPort               = 8888
-	defaultLogLevel           = "info"
-	defaultWorkersNumber      = 10
-	defaultQuota              = 0
-	defaultQuotaTimeInMinutes = 0
+	defaultPort          = 9998
+	defaultLogLevel      = "info"
+	defaultLogFormat     = "text"
+	defaultWorkersNumber = 10
+	defaultQuota         = 0 //unlimited
 )
 
 // Geocoder part for google service
@@ -28,37 +28,50 @@ type Geocoder struct {
 
 // Server part of http configuration
 type Server struct {
-	Port     int    `json:"port"`
-	LogLevel string `json:"logLevel"`
+	Port int `json:"port"`
+}
+
+// Log configuration
+type Log struct {
+	LogLevel  string `json:"logLevel"`
+	Stdout    bool   `json:"stdout"`
+	Format    string `json:"format"`
+	Filename  string `json:"filename"`
+	Directory string `json:"diretory"`
 }
 
 // Config stores configuration
 type Config struct {
-	Geocoder           Geocoder `json:"geocoder"`
-	Server             Server   `json:"server"`
-	WorkersNumber      int      `json:"workersNumber"`
-	Quota              int      `json:"quota"`
-	QuotaTimeInMinutes int      `json:"quotaTimeInMinutes"`
-	usedQuotaCount     int
-	useQuotaCheck      bool
-	mux                sync.RWMutex
+	Geocoder       Geocoder `json:"geocoder"`
+	Server         Server   `json:"server"`
+	Log            Log      `json:"log"`
+	WorkersNumber  int      `json:"workersNumber"`
+	Quota          int      `json:"quota"`
+	QuotaTime      string   `json:"quotaTime"`
+	quotaTime      time.Duration
+	usedQuotaCount int
+	useQuotaCheck  bool
+	mux            sync.RWMutex
 }
 
 func newConfig() *Config {
 	cfg := &Config{WorkersNumber: defaultWorkersNumber,
-		mux:                sync.RWMutex{},
-		Quota:              defaultQuota,
-		QuotaTimeInMinutes: defaultQuotaTimeInMinutes,
+		mux:   sync.RWMutex{},
+		Quota: defaultQuota,
 		Server: Server{
-			Port:     defaultPort,
+			Port: defaultPort,
+		},
+		Log: Log{
 			LogLevel: defaultLogLevel,
+			Stdout:   false,
+			Format:   defaultLogFormat,
+			Filename: "geocode_proxy_server.log",
 		},
 	}
 	return cfg
 }
 
-// SetUsedQuota set value of the used  quota
-func (c *Config) SetUsedQuota(q int) {
+func (c *Config) setUsedQuota(q int) {
 	c.mux.Lock()
 	defer c.mux.Unlock()
 	c.usedQuotaCount = q
@@ -76,7 +89,7 @@ func (c *Config) IncQuota() {
 
 // ResetUsedQuota set quota to default value
 func (c *Config) ResetUsedQuota() {
-	c.SetUsedQuota(0)
+	c.setUsedQuota(0)
 }
 
 //GetRemainingQuota returns current quota to use
@@ -112,16 +125,25 @@ func ReadConfig(filepath string) (cfg *Config, err error) {
 		return
 	}
 	cfg.useQuotaCheck = cfg.Quota > 0
+	if len(cfg.QuotaTime) != 0 {
+		var qt time.Duration
+		if qt, err = time.ParseDuration(cfg.QuotaTime); err != nil {
+			err = fmt.Errorf("Config error: Wrong value in quotaTime")
+			return
+		}
+		cfg.quotaTime = qt
+
+	}
 	return
 }
 
 // StartQuotaTimer start go function which checks if Quota should be resert
 func StartQuotaTimer(cfg *Config) {
-	if !cfg.useQuotaCheck {
+	if !cfg.useQuotaCheck || cfg.quotaTime == 0 {
 		return
 	}
 	go func() {
-		timeout := time.Duration(cfg.QuotaTimeInMinutes) * time.Minute
+		timeout := time.Duration(cfg.quotaTime)
 		timer := time.Tick(timeout)
 		for range timer {
 			log.Infof("Reset quota after timeout %v to value %d", timeout, cfg.Quota)

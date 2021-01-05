@@ -21,7 +21,7 @@ var (
 	// ErrGoogleLimit limit query from Google API
 	ErrGoogleLimit = errors.New("GOOGLE_OVER_QUERY_LIMIT")
 	// ErrQuotaLimit internal query limit
-	ErrQuotaLimit = errors.New("SERVER_QUERY_LIMIT")
+	ErrQuotaLimit = errors.New("SERVER_OVER_QUERY_LIMIT")
 )
 
 // Request to geocoder
