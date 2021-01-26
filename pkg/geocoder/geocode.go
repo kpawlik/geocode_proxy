@@ -5,7 +5,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/kpawlik/geocode_server/pkg/config"
+	"github.com/kpawlik/geocode_proxy/pkg/config"
 	log "github.com/sirupsen/logrus"
 
 	"googlemaps.github.io/maps"

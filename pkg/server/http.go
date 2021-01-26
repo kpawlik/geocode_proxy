@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/kpawlik/geocode_server/pkg/config"
-	"github.com/kpawlik/geocode_server/pkg/geocoder"
+	"github.com/kpawlik/geocode_proxy/pkg/config"
+	"github.com/kpawlik/geocode_proxy/pkg/geocoder"
 	log "github.com/sirupsen/logrus"
 )
 

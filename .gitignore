@@ -1,5 +1,6 @@
 *.exe
 *.json
 *.zip
+*.log
 .vscode/
-cmd/geocode_server/geocode_proxy
+cmd/geocode_proxy/geocode_proxy

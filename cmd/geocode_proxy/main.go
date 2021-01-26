@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/kpawlik/geocode_server/pkg/config"
-	"github.com/kpawlik/geocode_server/pkg/server"
+	"github.com/kpawlik/geocode_proxy/pkg/config"
+	"github.com/kpawlik/geocode_proxy/pkg/server"
 	log "github.com/sirupsen/logrus"
 	lumberjack "gopkg.in/natefinch/lumberjack.v2"
 )
