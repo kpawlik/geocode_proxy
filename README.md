@@ -8,8 +8,8 @@ Requires  Go 1.15+ [www.golang.org](https://www.golang.org)
 
 Run 
 ```
-go get github.com/kpawlik/geocode_proxy_server
-go install github.com/kpawlik/geocode_proxy_server
+go get github.com/kpawlik/geocode_proxy
+go install github.com/kpawlik/geocode_proxy
 ```
 
 ## Configuration
@@ -39,8 +39,8 @@ Create configuration JSON file.
 - `port` - (default `9998`)
 - `logLevel` - (default `info`)
 - `quota` - (default `0`)
-- `quotaTimeInMinutes` - (default `0`)
-- `workersNumber` - (default `10`)
+- `quotaTimeInMinutes` - (default `0` - unlimited)
+- `workersNumber` - (default `10`  - unlimited)
 ## How to start
 
 Create config file in the same location as executable.
@@ -48,22 +48,22 @@ Execute:
 
 Windows
 ```
-.\geocode_proxy_server.exe
+.\geocode_proxy.exe
 ```
 Linux
 ```
-./geocode_proxy_server
+./geocode_proxy
 ```
 Create config file in any location.
 Execute:
 
 Windows
 ```
-.\geocode_proxy_server.exe -config [PATH_TO_JSON_CONFIG_FILE]
+.\geocode_proxy.exe -config [PATH_TO_JSON_CONFIG_FILE]
 ```
 Linux
 ```
-./geocode_proxy_server -config [PATH_TO_JSON_CONFIG_FILE]
+./geocode_proxy -config [PATH_TO_JSON_CONFIG_FILE]
 ```
 
 Geocode service will be aviable on `http://localhost:8080/geocode`

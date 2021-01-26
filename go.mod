@@ -1,4 +1,4 @@
-module github.com/kpawlik/geocode_server
+module github.com/kpawlik/geocode_proxy
 
 go 1.15
 

@@ -4,7 +4,7 @@ here=$(dirname $0)
 
 action=$1
 logdir=$2
-process_name=geocode_proxy_server
+process_name=geocode_proxy
 
 function is_runnung(){
     RESULT=`pgrep -f "${process_name} -config"`
@@ -30,7 +30,7 @@ function start(){
         logdir=$here
     fi
     echo "Starting process..."
-    nohup $here/geocode_proxy_server -config $here/config.json >> $logdir/geocode_proxy_server.log 2>&1 &
+    nohup $here/geocode_proxy -config $here/config.json >> $logdir/geocode_proxy.log 2>&1 &
     sleep 1
     status
 }
