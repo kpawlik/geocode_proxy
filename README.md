@@ -14,7 +14,7 @@ go install github.com/kpawlik/geocode_proxy
 
 ## Configuration
 Create configuration JSON file.
-```json
+```
 {
     "geocoder": {
         "apiKey": string,
@@ -72,7 +72,7 @@ Geocode service will be aviable on `http://localhost:8080/geocode`
 Send HTTP POST request.
 
 ### JSON Request
-```json
+```
 {
     "addresses": [
         {
@@ -85,7 +85,7 @@ Send HTTP POST request.
 Example using jQuery:
 
 ```js
-let data = {"addresses":[
+const data = {"addresses":[
     {
         "address": "Address string",
         "id": "ID string"
@@ -95,13 +95,13 @@ let result = await $.post("/geocode", JSON.stringify(data));
 ```
 
 ### Response
-```json
+```
 {
     "addresses": [
         {
             "address": string,
             "id": string,
-            "lat: float,
+            "lat": float,
             "lng": float,
             "error": string
         },
